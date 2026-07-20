@@ -1,0 +1,40 @@
+name: Daily Momentum Scan
+
+on:
+  schedule:
+    # 21:30 UTC ≈ 4:30pm ET (after market close), Mon-Fri
+    - cron: '30 21 * * 1-5'
+  workflow_dispatch: {}  # allows manual trigger from GitHub UI too
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.5'
+
+      - name: Restore cache and position state
+        uses: actions/cache@v4
+        with:
+          path: go-live/data
+          key: scanner-data-${{ github.run_id }}
+          restore-keys: scanner-data-
+
+      - name: Run scanner
+        working-directory: go-live
+        env:
+          ALPACA_KEY_ID: ${{ secrets.ALPACA_KEY_ID }}
+          ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
+          ACCOUNT_EQUITY: '10000'
+        run: go run cmd/live/main.go
+
+      - name: Commit updated data
+        run: |
+          git config user.name "scanner-bot"
+          git config user.email "actions@github.com"
+          git add go-live/data
+          git commit -m "Daily scan: $(date -u +%Y-%m-%d)" || echo "no changes"
+          git push
